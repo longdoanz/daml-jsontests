@@ -2,35 +2,26 @@
 ## Hướng dẫn tạo repository và chạy kiểm thử
 
 ### 0. Tạo repository và chuẩn bị workspace
-1. Trên GitHub, tạo một repository mới tên là `json-tests`.
-2. Mở workspace với Codespaces để làm việc.
+1. Trên GitHub, tạo một repository mới tên là `json-tests` (nếu bạn muốn một repo riêng để lưu test).
+2. Mở workspace với Codespaces hoặc một terminal trên máy Linux để làm việc.
 
-### 1. Tạo 2 script thiết lập và chạy kiểm thử
+### 1. Lấy các script
 
-Tạo hai file script sau trong thư mục gốc repo:
-- `quest3_setup.sh`: Script thiết lập môi trường
-- `quest3_run.sh`: Script chạy kiểm thử tự động
-
-Sau khi tạo xong, mở terminal và thực hiện các bước sau:
-1. Cấp quyền thực thi cho 2 file:
+1. Di chuyển lên thư mục cha nơi bạn muốn lưu bản clone (lưu ý: dùng `cd ../` nếu bạn đang ở trong một thư mục con):
 	```bash
-	chmod +x quest3_setup.sh quest3_run.sh
+	cd ../
 	```
-2. Di chuyển 2 file script ra ngoài repo hiện tại (thư mục cha):
+2. Clone repository này (thay URL nếu repo của bạn ở nơi khác):
 	```bash
-	mv quest3_setup.sh quest3_run.sh ../
-	```
-3. Thay đổi thư mục làm việc sang thư mục cha:
-	```bash
-	cd ..
+	git clone https://github.com/longdoanz/daml-jsontests.git
 	```
 
 ### 2. Chạy các script
-Chạy lần lượt các script:
+Chạy lần lượt các script từ thư mục dự án (ví dụ `daml-jsontests` hoặc `json-tests` nếu bạn dùng tên đó khi clone):
 ```bash
-./quest3_setup.sh
-./quest3_run.sh
+cd daml-jsontests && bash ./quest3_setup.sh && bash ./quest3_run.sh
 ```
+
 Các script sẽ tự động thiết lập môi trường và thực hiện kiểm thử.
 
 ## Hướng dẫn chạy Quest 3

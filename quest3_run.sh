@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_NAME="json-tests"
-DAR_PATH="${PROJECT_NAME}/.daml/dist/${PROJECT_NAME}-0.0.1.dar"
+PROJECT_NAME="../json-tests"
+DAR_PATH="${PROJECT_NAME}/.daml/dist/json-tests-0.0.1.dar"
 SANDBOX_PORT=6865
 JSONAPI_PORT=7575
 SECRET="sEcrEt"
@@ -15,9 +15,19 @@ echo "🚀 Quest3 auto-run bắt đầu..."
 echo "🛑 Dừng tất cả tiến trình daml cũ..."
 pkill -f daml || true
 
+# Kiểm tra xem project directory có tồn tại không trước khi dùng DAR_PATH
+if [ ! -d "${PROJECT_NAME}" ]; then
+  echo "❌ Project directory '${PROJECT_NAME}' không tồn tại. PROJECT_NAME."
+  $DAML_BIN/daml new $PROJECT_NAME
+else
+  echo "✅ Project directory '${PROJECT_NAME}' đã tồn tại."
+  cp -r json-tests/* $PROJECT_NAME/
+fi
+
 # Đảm bảo DAR tồn tại
 if [ ! -f "${DAR_PATH}" ]; then
   echo "🔨 Build lại project vì chưa có DAR..."
+  cd "${PROJECT_NAME}"
   $DAML_BIN/daml build
 fi
 

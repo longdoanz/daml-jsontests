@@ -5,7 +5,7 @@ set -euo pipefail
 # Config cơ bản
 # ================
 DAML_VERSION="2.10.2"
-PROJECT_NAME="json-tests"
+PROJECT_NAME="../json-tests"
 SANDBOX_PORT=6865
 JSONAPI_PORT=7575
 NAVIGATOR_PORT=7500
@@ -72,36 +72,3 @@ fi
 # Kiểm tra cài đặt
 java -version
 
-
-# ================
-# Bước 2: Tạo model, build, khởi chạy Sandbox + JSON API
-# ================
-if [ ! -d "${PROJECT_NAME}" ]; then
-  echo "📂 Tạo project Daml mẫu: ${PROJECT_NAME}..."
-  $DAML_BIN/daml new "${PROJECT_NAME}"   # theo step 2.1
-fi
-
-cd "${PROJECT_NAME}"
-
-echo "🔨 Build Daml model..."
-$DAML_BIN/daml build                      # theo step 2.2
-
-DAR_PATH="./.daml/dist/${PROJECT_NAME}-0.0.1.dar"
-if [ ! -f "${DAR_PATH}" ]; then
-  echo "❌ Không tìm thấy DAR tại ${DAR_PATH}"
-  exit 1
-fi
-
-# Tạo config JSON API theo step 2.4
-cat > json-api-app.conf <<EOF
-{
-  server {
-    address = "localhost"
-    port = ${JSONAPI_PORT}
-  }
-  ledger-api {
-    address = "localhost"
-    port = ${SANDBOX_PORT}
-  }
-}
-EOF
