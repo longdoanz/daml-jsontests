@@ -158,6 +158,8 @@ curl -s \
 echo "-----------------------------------------------------------------------"
 echo "COPY CAU LENH SAU DE CHAY TREN TERMINAL MOI DE CHUP MAN HINH:"
 echo "-----------------------------------------------------------------------"
-echo "curl -s -H \"Content-Type: application/json\" -H \"Authorization: Bearer $ALICE_JWT\" -d @query.json -X POST localhost:${JSONAPI_PORT}/v1/query | jq"
+echo 'cd /workspace/json-tests'
+echo "ALICE_JWT='${ALICE_JWT}'"
+echo "curl -s -H \"Content-Type: application/json\" -H \"Authorization: Bearer \$ALICE_JWT\" -d @query.json -X POST localhost:${JSONAPI_PORT}/v1/query | jq"
 
 sleep 60
