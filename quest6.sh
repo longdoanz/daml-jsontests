@@ -4,54 +4,40 @@ set -euo pipefail
 # Cấu hình
 SDK_VERSION="3.3.0-snapshot.20250930.0"
 PROJECT_DIR="capstone"
-JSON_DIR="$PROJECT_DIR/json"
+JSON_DIR="json"
 SANDBOX_PORT=7575
 SANDBOX_HOST="http://localhost:${SANDBOX_PORT}"
 
-# Cài Daml SDK (nếu cần)
-if ! command -v daml >/dev/null 2>&1; then
-  echo "==> Installing Daml SDK ${SDK_VERSION}..."
-  curl -sSL https://get.daml.com/ | sh -s "${SDK_VERSION}"
-fi
 
-daml new $PROJECT_DIR --template quickstart-java
+# # Start sandbox (nếu chưa có sandbox chạy)
+# if ! curl -s "${SANDBOX_HOST}/docs/openapi" >/dev/null 2>&1; then
+#   echo "==> Starting sandbox on port ${SANDBOX_PORT}..."
+#   daml sandbox --json-api-port "${SANDBOX_PORT}" &
+#   SANDBOX_PID=$!
+#   trap 'echo "==> Stopping sandbox..."; kill ${SANDBOX_PID} 2>/dev/null || true; wait ${SANDBOX_PID} 2>/dev/null || true' EXIT
+#   # Wait for sandbox ready
+#   until curl -s "${SANDBOX_HOST}/docs/openapi" >/dev/null; do
+#     echo "Waiting for sandbox to be ready..."
+#     sleep 1
+#   done
+#   echo "Sandbox is up (PID=${SANDBOX_PID})!"
+# else
+#   echo "==> Sandbox already running."
+#   SANDBOX_PID=""
+# fi
 
-# Vào thư mục dự án
 cd "$PROJECT_DIR"
-
-echo "==> Nhắc lại: nếu muốn chạy sandbox thủ công, hãy chạy 'daml sandbox --json-api-port ${SANDBOX_PORT}' ở terminal khác trước khi tiếp tục."
-
-# Build DAR
-echo "==> Building DAR..."
-daml build
-
-# Start sandbox (nếu chưa có sandbox chạy)
-if ! curl -s "${SANDBOX_HOST}/docs/openapi" >/dev/null 2>&1; then
-  echo "==> Starting sandbox on port ${SANDBOX_PORT}..."
-  daml sandbox --json-api-port "${SANDBOX_PORT}" &
-  SANDBOX_PID=$!
-  trap 'echo "==> Stopping sandbox..."; kill ${SANDBOX_PID} 2>/dev/null || true; wait ${SANDBOX_PID} 2>/dev/null || true' EXIT
-  # Wait for sandbox ready
-  until curl -s "${SANDBOX_HOST}/docs/openapi" >/dev/null; do
-    echo "Waiting for sandbox to be ready..."
-    sleep 1
-  done
-  echo "Sandbox is up (PID=${SANDBOX_PID})!"
-else
-  echo "==> Sandbox already running."
-  SANDBOX_PID=""
-fi
-
 # Tạo thư mục json
-mkdir -p "$JSON_DIR"
+mkdir -p $JSON_DIR
 
 # Upload DAR
 DAR_PATH=$(ls .daml/dist/*.dar | head -n1)
 echo "==> Upload DAR: $DAR_PATH"
-curl -s -X POST "${SANDBOX_HOST}/v2/packages" \
+curl -v -X POST 'http://localhost:7575/v2/packages' \
   -H "Content-Type: application/octet-stream" \
-  --data-binary @"$DAR_PATH" >/dev/null
+  --data-binary @.daml/dist/quickstart-0.0.1.dar
 
+sleep 5
 # Allocate parties
 echo "==> Allocating parties..."
 PARTIES_OUT="${JSON_DIR}/parties.out.txt"
@@ -60,9 +46,25 @@ PARTIES_OUT="${JSON_DIR}/parties.out.txt"
 allocate_party() {
   local hint="$1"
   local out="$2"
-  curl -s -d "{\"partyIdHint\":\"${hint}\",\"identityProviderId\":\"\"}" \
-    -H "Content-Type: application/json" -X POST "${SANDBOX_HOST}/v2/parties" | tee "$out"
-  jq -r '.partyDetails.party' "$out"
+  # Gọi API, lưu response vào biến
+  local resp
+  resp=$(curl -s -d "{\"partyIdHint\":\"${hint}\",\"identityProviderId\":\"\"}" \
+    -H "Content-Type: application/json" -X POST "${SANDBOX_HOST}/v2/parties")
+
+  # Ghi response ra file và stdout
+  printf '%s\n' "$resp" | tee "$out" >/dev/null
+
+  # Extract party id một cách an toàn
+  local party
+  party=$(printf '%s\n' "$resp" | jq -r '.partyDetails.party // empty')
+
+  if [ -z "$party" ]; then
+    echo "ERROR: không lấy được party từ response. Response was:" >&2
+    printf '%s\n' "$resp" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$party"
 }
 
 ALICE_JSON="${JSON_DIR}/alice.out.json"
@@ -70,24 +72,30 @@ BOB_JSON="${JSON_DIR}/bob.out.json"
 USD_JSON="${JSON_DIR}/usd_bank.out.json"
 EUR_JSON="${JSON_DIR}/eur_bank.out.json"
 
-ALICE_ID=$(allocate_party "Alice" "$ALICE_JSON")
+ALICE_ID=$(allocate_party "Alice5" "$ALICE_JSON")
 echo "ALICE_ID=$ALICE_ID" | tee -a "$PARTIES_OUT"
 
-BOB_ID=$(allocate_party "Bob" "$BOB_JSON")
+BOB_ID=$(allocate_party "Bob5" "$BOB_JSON")
 echo "BOB_ID=$BOB_ID" | tee -a "$PARTIES_OUT"
 
-USD_BANK_ID=$(allocate_party "USD_Bank" "$USD_JSON")
+USD_BANK_ID=$(allocate_party "USD_Bank4" "$USD_JSON")
 echo "USD_BANK_ID=$USD_BANK_ID" | tee -a "$PARTIES_OUT"
 
-EUR_BANK_ID=$(allocate_party "EUR_Bank" "$EUR_JSON")
+EUR_BANK_ID=$(allocate_party "EUR_Bank4" "$EUR_JSON")
 echo "EUR_BANK_ID=$EUR_BANK_ID" | tee -a "$PARTIES_OUT"
 
 # Get PACKAGE_ID using ALICE_ID
 echo "==> Getting PACKAGE_ID..."
+echo "ALICE_ID for package query: $ALICE_ID"
 curl -s -X GET "${SANDBOX_HOST}/v2/interactive-submission/preferred-package-version?package-name=quickstart&parties=${ALICE_ID}" \
   | tee "${JSON_DIR}/pkg.out.json" | jq .
-PACKAGE_ID=$(jq -r '.packageId' "${JSON_DIR}/pkg.out.json")
-echo "PACKAGE_ID=$PACKAGE_ID" | tee -a "$PARTIES_OUT"
+PACKAGE_ID=$(jq -r '.packagePreference.packageReference.packageId // .packageId // empty' "${JSON_DIR}/pkg.out.json")
+if [ -z "$PACKAGE_ID" ]; then
+  echo "ERROR: PACKAGE_ID not found in ${JSON_DIR}/pkg.out.json" >&2
+  jq . "${JSON_DIR}/pkg.out.json" >&2
+  exit 1
+fi
+
 
 # Build JSON payloads that don't require runtime values
 cat > "${JSON_DIR}/issue_eur.json" <<EOF
@@ -145,31 +153,89 @@ EOF
 # Submit issue_eur and extract ALICE_TRANSFER_CID
 echo "==> Submitting issue_eur.json..."
 RESP_EUR=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
-  -H "Content-Type: application/json" -d @"${JSON_DIR}/issue_eur.json")
-echo "$RESP_EUR" | jq . > "${JSON_DIR}/issue_eur.resp.json"
-ALICE_TRANSFER_CID=$(jq -r '
-  (.result.transaction.events[]? | select(.created? and .created.templateId? and (.created.templateId.module == "Iou" or .created.templateId.entity == "Iou")) | .created.contractId)
-  // empty
-' "${JSON_DIR}/issue_eur.resp.json" | head -n1)
+  -H "Content-Type: application/json" \
+  -d @"${JSON_DIR}/issue_eur.json")
+
+# Lưu response để debug
+printf '%s\n' "$RESP_EUR" | jq . > "${JSON_DIR}/issue_eur.resp.json"
+
+# Thử nhiều đường dẫn để tìm các events
+ALICE_TRANSFER_CID=$(
+  jq -r '
+    # unify possible roots: .result.transaction or .transaction
+    ( .result.transaction // .transaction ) as $tx
+    | ($tx.events // [])[]
+    # support both CreatedEvent and created lower-case shapes
+    | ( .CreatedEvent? // .created? ) as $c
+    | select($c != null)
+    # prefer templateId that contains "Iou" (string), otherwise pass through
+    | select(($c.templateId // "") | tostring | contains("Iou"))? 
+    | $c.contractId
+  ' "${JSON_DIR}/issue_eur.resp.json" | head -n1
+)
+
+# Fallback: nếu chưa có, lấy first created.contractId bất kể template
 if [ -z "$ALICE_TRANSFER_CID" ]; then
-  echo "ERROR: ALICE_TRANSFER_CID not found in issue_eur response"
+  ALICE_TRANSFER_CID=$(
+    jq -r '
+      ( .result.transaction // .transaction ) as $tx
+      | ($tx.events // [])[]
+      | ( .CreatedEvent? // .created? ) as $c
+      | select($c != null)
+      | $c.contractId
+    ' "${JSON_DIR}/issue_eur.resp.json" | head -n1
+  )
+fi
+
+if [ -z "$ALICE_TRANSFER_CID" ]; then
+  echo "ERROR: ALICE_TRANSFER_CID not found in ${JSON_DIR}/issue_eur.resp.json; inspect the file to see the exact event shape" >&2
+  jq . "${JSON_DIR}/issue_eur.resp.json" >&2
   exit 1
 fi
+
 echo "ALICE_TRANSFER_CID=$ALICE_TRANSFER_CID" | tee -a "$PARTIES_OUT"
+
 
 # Submit issue_usd and extract BOB_TRANSFER_CID
 echo "==> Submitting issue_usd.json..."
 RESP_USD=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
-  -H "Content-Type: application/json" -d @"${JSON_DIR}/issue_usd.json")
-echo "$RESP_USD" | jq . > "${JSON_DIR}/issue_usd.resp.json"
-BOB_TRANSFER_CID=$(jq -r '
-  (.result.transaction.events[]? | select(.created? and .created.templateId? and (.created.templateId.module == "Iou" or .created.templateId.entity == "Iou")) | .created.contractId)
-  // empty
-' "${JSON_DIR}/issue_usd.resp.json" | head -n1)
+  -H "Content-Type: application/json" \
+  -d @"${JSON_DIR}/issue_usd.json")
+
+# Lưu response để debug
+printf '%s\n' "$RESP_USD" | jq . > "${JSON_DIR}/issue_usd.resp.json"
+
+# Thử nhiều đường dẫn, ưu tiên templateId chứa "Iou"
+BOB_TRANSFER_CID=$(
+  jq -r '
+    ( .result.transaction // .transaction ) as $tx
+    | ($tx.events // [])[]
+    | ( .CreatedEvent? // .created? ) as $c
+    | select($c != null)
+    | select(($c.templateId // "") | tostring | contains("Iou"))?
+    | $c.contractId
+  ' "${JSON_DIR}/issue_usd.resp.json" | head -n1
+)
+
+# Fallback: lấy contractId đầu tiên của created events nếu chưa có
 if [ -z "$BOB_TRANSFER_CID" ]; then
-  echo "ERROR: BOB_TRANSFER_CID not found in issue_usd response"
+  BOB_TRANSFER_CID=$(
+    jq -r '
+      ( .result.transaction // .transaction ) as $tx
+      | ($tx.events // [])[]
+      | ( .CreatedEvent? // .created? ) as $c
+      | select($c != null)
+      | $c.contractId
+    ' "${JSON_DIR}/issue_usd.resp.json" | head -n1
+  )
+fi
+
+if [ -z "$BOB_TRANSFER_CID" ]; then
+  echo "ERROR: BOB_TRANSFER_CID not found in ${JSON_DIR}/issue_usd.resp.json; saved response for inspection" >&2
+  jq . "${JSON_DIR}/issue_usd.resp.json" >&2
   exit 1
 fi
+
 echo "BOB_TRANSFER_CID=$BOB_TRANSFER_CID" | tee -a "$PARTIES_OUT"
 
 # Create alice_trf.json and bob_trf.json using extracted transfer CIDs
@@ -214,16 +280,39 @@ cat > "${JSON_DIR}/bob_trf.json" <<EOF
 EOF
 
 # Alice accepts and extract ALICE_ACCEPT_EUR
+# Alice accepts and extract ALICE_ACCEPT_EUR
 echo "==> Alice accepts EUR transfer..."
 RESP_ALICE_ACCEPT=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
-  -H "Content-Type: application/json" -d @"${JSON_DIR}/alice_trf.json")
-echo "$RESP_ALICE_ACCEPT" | jq . > "${JSON_DIR}/alice_accept.resp.json"
-ALICE_ACCEPT_EUR=$(jq -r '
-  (.result.transaction.events[]? | select(.created?) | .created.contractId)
-  // empty
-' "${JSON_DIR}/alice_accept.resp.json" | head -n1)
+  -H "Content-Type: application/json" \
+  -d @"${JSON_DIR}/alice_trf.json")
+printf '%s\n' "$RESP_ALICE_ACCEPT" | jq . > "${JSON_DIR}/alice_accept.resp.json"
+
+ALICE_ACCEPT_EUR=$(
+  jq -r '
+    ( .result.transaction // .transaction ) as $tx
+    | ($tx.events // [])[]
+    | ( .CreatedEvent? // .created? ) as $c
+    | select($c != null)
+    | select(($c.templateId // "") | tostring | contains("Iou"))?
+    | $c.contractId
+  ' "${JSON_DIR}/alice_accept.resp.json" | head -n1
+)
+
 if [ -z "$ALICE_ACCEPT_EUR" ]; then
-  echo "ERROR: ALICE_ACCEPT_EUR not found"
+  ALICE_ACCEPT_EUR=$(
+    jq -r '
+      ( .result.transaction // .transaction ) as $tx
+      | ($tx.events // [])[]
+      | ( .CreatedEvent? // .created? ) as $c
+      | select($c != null)
+      | $c.contractId
+    ' "${JSON_DIR}/alice_accept.resp.json" | head -n1
+  )
+fi
+
+if [ -z "$ALICE_ACCEPT_EUR" ]; then
+  echo "ERROR: ALICE_ACCEPT_EUR not found in ${JSON_DIR}/alice_accept.resp.json; inspect the file" >&2
+  jq . "${JSON_DIR}/alice_accept.resp.json" >&2
   exit 1
 fi
 echo "ALICE_ACCEPT_EUR=$ALICE_ACCEPT_EUR" | tee -a "$PARTIES_OUT"
@@ -231,19 +320,44 @@ echo "ALICE_ACCEPT_EUR=$ALICE_ACCEPT_EUR" | tee -a "$PARTIES_OUT"
 # Bob accepts and extract BOB_ACCEPT_USD and LATEST_OFFSET
 echo "==> Bob accepts USD transfer..."
 RESP_BOB_ACCEPT=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
-  -H "Content-Type: application/json" -d @"${JSON_DIR}/bob_trf.json")
-echo "$RESP_BOB_ACCEPT" | jq . > "${JSON_DIR}/bob_accept.resp.json"
-BOB_ACCEPT_USD=$(jq -r '
-  (.result.transaction.events[]? | select(.created?) | .created.contractId)
-  // empty
-' "${JSON_DIR}/bob_accept.resp.json" | head -n1)
-LATEST_OFFSET=$(jq -r '.result.transaction.offset' "${JSON_DIR}/bob_accept.resp.json")
+  -H "Content-Type: application/json" \
+  -d @"${JSON_DIR}/bob_trf.json")
+printf '%s\n' "$RESP_BOB_ACCEPT" | jq . > "${JSON_DIR}/bob_accept.resp.json"
+
+BOB_ACCEPT_USD=$(
+  jq -r '
+    ( .result.transaction // .transaction ) as $tx
+    | ($tx.events // [])[]
+    | ( .CreatedEvent? // .created? ) as $c
+    | select($c != null)
+    | select(($c.templateId // "") | tostring | contains("Iou"))?
+    | $c.contractId
+  ' "${JSON_DIR}/bob_accept.resp.json" | head -n1
+)
+
+if [ -z "$BOB_ACCEPT_USD" ]; then
+  BOB_ACCEPT_USD=$(
+    jq -r '
+      ( .result.transaction // .transaction ) as $tx
+      | ($tx.events // [])[]
+      | ( .CreatedEvent? // .created? ) as $c
+      | select($c != null)
+      | $c.contractId
+    ' "${JSON_DIR}/bob_accept.resp.json" | head -n1
+  )
+fi
+
+LATEST_OFFSET=$(jq -r '(.result.transaction.offset // .transaction.offset) // empty' "${JSON_DIR}/bob_accept.resp.json")
+
 if [ -z "$BOB_ACCEPT_USD" ] || [ -z "$LATEST_OFFSET" ]; then
-  echo "ERROR: BOB_ACCEPT_USD or LATEST_OFFSET not found"
+  echo "ERROR: BOB_ACCEPT_USD or LATEST_OFFSET not found in ${JSON_DIR}/bob_accept.resp.json; inspect the file" >&2
+  jq . "${JSON_DIR}/bob_accept.resp.json" >&2
   exit 1
 fi
+
 echo "BOB_ACCEPT_USD=$BOB_ACCEPT_USD" | tee -a "$PARTIES_OUT"
 echo "LATEST_OFFSET=$LATEST_OFFSET" | tee -a "$PARTIES_OUT"
+
 
 # Build acs.json using LATEST_OFFSET
 cat > "${JSON_DIR}/acs.json" <<EOF
@@ -289,20 +403,47 @@ echo "==> Querying ACS (active contracts) at offset ${LATEST_OFFSET}..."
 curl -s -X POST "${SANDBOX_HOST}/v2/state/active-contracts" \
   -H "Content-Type: application/json" -d @"${JSON_DIR}/acs.json" | jq . > "${JSON_DIR}/acs.resp.json"
 
-# From ACS, find the contractId for Alice's Iou (the created one) to use in add_observer
-NEW_IOU=$(jq -r '
-  .contractEntries[]? | select(.contract? and .contract.signatories? and (.contract.signatories | index("'"${EUR_BANK_ID}"'") or index("'"${ALICE_ID}"'"))) | .contract.contractId
-' "${JSON_DIR}/acs.resp.json" | head -n1)
+# Robust extraction: search anywhere for contract.contractId whose signatories contain EUR_BANK_ID or ALICE_ID
+# Robust extraction for array-of-entries shape
+NEW_IOU=$(
+  jq -r '
+    # handle top-level array of entries
+    .[]?
+    # find createdEvent under possible shapes and return contractId
+    | ( .contractEntry?.JsActiveContract?.createdEvent
+        // .contractEntry?.createdEvent
+        // .contractEntry?.contract?.createdEvent
+        // .createdEvent
+        // .CreatedEvent
+      ) as $c
+    | select($c != null)
+    | $c.contractId
+  ' "${JSON_DIR}/acs.resp.json" \
+  | head -n1
+)
 
+# Fallbacks for other common shapes
 if [ -z "$NEW_IOU" ]; then
-  # fallback: try first created contract
-  NEW_IOU=$(jq -r '.contractEntries[0].contract.contractId' "${JSON_DIR}/acs.resp.json")
+  NEW_IOU=$(
+    jq -r '
+      # try .contractEntries[].contract.contractId or other common shapes
+      (.contractEntries?[]?.contract?.contractId
+       // .contracts?[]?.contractId
+       // (.. | objects | .createdEvent? // .CreatedEvent? | .contractId)
+      ) as $x
+      | select($x != null)
+      | $x
+    ' "${JSON_DIR}/acs.resp.json" \
+    | head -n1
+  )
 fi
 
 if [ -z "$NEW_IOU" ]; then
-  echo "ERROR: NEW_IOU not found in ACS response"
+  echo "ERROR: NEW_IOU not found in ACS response; inspect ${JSON_DIR}/acs.resp.json" >&2
+  jq . "${JSON_DIR}/acs.resp.json" >&2
   exit 1
 fi
+
 echo "NEW_IOU=$NEW_IOU" | tee -a "$PARTIES_OUT"
 
 # add_observer.json (Alice adds Bob as observer on her EUR IOU)
@@ -330,11 +471,37 @@ echo "==> Submitting add_observer..."
 RESP_ADD_OBS=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
   -H "Content-Type: application/json" -d @"${JSON_DIR}/add_observer.json")
 echo "$RESP_ADD_OBS" | jq . > "${JSON_DIR}/add_observer.resp.json"
-NEW_IOU_FROM_ADD=$(jq -r '(.result.transaction.events[]? | select(.created?) | .created.contractId) // empty' "${JSON_DIR}/add_observer.resp.json" | head -n1)
+# Thử nhiều đường dẫn: .result.transaction hoặc .transaction; hỗ trợ CreatedEvent (PascalCase) và created (camelCase)
+NEW_IOU_FROM_ADD=$(
+  jq -r '
+    ( .result.transaction // .transaction ) as $tx
+    | ($tx.events // [])[]
+    | ( .CreatedEvent? // .created? ) as $c
+    | select($c != null)
+    | select( (($c.templateId // "") | tostring | contains("Iou")) or ($c.packageName? != null) )?
+    | $c.contractId
+  ' "${JSON_DIR}/add_observer.resp.json" | head -n1
+)
+
+# Fallback: nếu không có created event, thử lấy contractId từ exercises hoặc từ các field archive/consumed nếu cần
 if [ -z "$NEW_IOU_FROM_ADD" ]; then
-  echo "ERROR: NEW_IOU_FROM_ADD not found"
+  NEW_IOU_FROM_ADD=$(
+    jq -r '
+      ( .result.transaction // .transaction ) as $tx
+      | ($tx.events // [])[]
+      | ( .CreatedEvent? // .created? // .exercised? // .archived? ) as $e
+      | select($e != null)
+      | ($e.contractId // $e.contract?.contractId // empty)
+    ' "${JSON_DIR}/add_observer.resp.json" | head -n1
+  )
+fi
+
+if [ -z "$NEW_IOU_FROM_ADD" ]; then
+  echo "ERROR: NEW_IOU_FROM_ADD not found in ${JSON_DIR}/add_observer.resp.json; inspect the file for actual event shape" >&2
+  jq . "${JSON_DIR}/add_observer.resp.json" >&2
   exit 1
 fi
+
 echo "NEW_IOU=$NEW_IOU_FROM_ADD" | tee -a "$PARTIES_OUT"
 
 # propose_trade.json (Alice proposes trade)
@@ -370,11 +537,42 @@ echo "==> Submitting trade proposal..."
 RESP_PROPOSE=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
   -H "Content-Type: application/json" -d @"${JSON_DIR}/propose_trade.json")
 echo "$RESP_PROPOSE" | jq . > "${JSON_DIR}/propose_trade.resp.json"
-TRADE_PROPOSAL_CID=$(jq -r '(.result.transaction.events[]? | select(.created?) | .created.contractId) // empty' "${JSON_DIR}/propose_trade.resp.json" | head -n1)
+# Thử nhiều đường dẫn: .result.transaction hoặc .transaction; CreatedEvent (PascalCase) hoặc created (camelCase)
+TRADE_PROPOSAL_CID=$(
+  jq -r '
+    ( .result.transaction // .transaction ) as $tx
+    | ($tx.events // [])[]
+    | ( .CreatedEvent? // .created? ) as $c
+    | select($c != null)
+    | select( (($c.templateId // "") | tostring | contains("IouTrade")) or (($c.packageName // "") | tostring | contains("quickstart")) )?
+    | $c.contractId
+  ' "${JSON_DIR}/propose_trade.resp.json" | head -n1
+)
+
+# Fallback: lấy bất kỳ created contractId đầu tiên
 if [ -z "$TRADE_PROPOSAL_CID" ]; then
-  echo "ERROR: TRADE_PROPOSAL_CID not found"
+  TRADE_PROPOSAL_CID=$(
+    jq -r '
+      ( .result.transaction // .transaction ) as $tx
+      | ($tx.events // [])[]
+      | ( .CreatedEvent? // .created? ) as $c
+      | select($c != null)
+      | $c.contractId
+    ' "${JSON_DIR}/propose_trade.resp.json" | head -n1
+  )
+fi
+
+# Nếu vẫn rỗng, in ra thông tin hữu ích để debug
+if [ -z "$TRADE_PROPOSAL_CID" ]; then
+  echo "ERROR: TRADE_PROPOSAL_CID not found; inspect ${JSON_DIR}/propose_trade.resp.json" >&2
+  echo "---- Full response ----" >&2
+  jq . "${JSON_DIR}/propose_trade.resp.json" >&2
+  echo "---- Events summary (types and contractIds) ----" >&2
+  jq -r '(.result.transaction // .transaction) as $tx | ($tx.events // [])[] | keys[] as $k | "\($k): \((.[$k].contractId // .[$k].created?.contractId // .[$k].createdEvent?.contractId) // \"(no id)\")"' "${JSON_DIR}/propose_trade.resp.json" >&2 || true
+  echo "Check: - ensure propose_trade.json is a CreateCommand for IouTrade; - ensure commandId is unique; - inspect whether API returned warnings/errors." >&2
   exit 1
 fi
+
 echo "TRADE_PROPOSAL_CID=$TRADE_PROPOSAL_CID" | tee -a "$PARTIES_OUT"
 
 # accept_trade.json (Bob accepts proposal)
