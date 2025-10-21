@@ -4,7 +4,7 @@ set -euo pipefail
 # Cấu hình
 SDK_VERSION="3.3.0-snapshot.20250930.0"
 PROJECT_DIR="capstone"
-JSON_DIR="json"
+JSON_DIR="../json"
 SANDBOX_PORT=7575
 SANDBOX_HOST="http://localhost:${SANDBOX_PORT}"
 
@@ -72,16 +72,16 @@ BOB_JSON="${JSON_DIR}/bob.out.json"
 USD_JSON="${JSON_DIR}/usd_bank.out.json"
 EUR_JSON="${JSON_DIR}/eur_bank.out.json"
 
-ALICE_ID=$(allocate_party "Alice5" "$ALICE_JSON")
+ALICE_ID=$(allocate_party "Alice" "$ALICE_JSON")
 echo "ALICE_ID=$ALICE_ID" | tee -a "$PARTIES_OUT"
 
-BOB_ID=$(allocate_party "Bob5" "$BOB_JSON")
+BOB_ID=$(allocate_party "Bob" "$BOB_JSON")
 echo "BOB_ID=$BOB_ID" | tee -a "$PARTIES_OUT"
 
-USD_BANK_ID=$(allocate_party "USD_Bank4" "$USD_JSON")
+USD_BANK_ID=$(allocate_party "USD_Bank" "$USD_JSON")
 echo "USD_BANK_ID=$USD_BANK_ID" | tee -a "$PARTIES_OUT"
 
-EUR_BANK_ID=$(allocate_party "EUR_Bank4" "$EUR_JSON")
+EUR_BANK_ID=$(allocate_party "EUR_Bank" "$EUR_JSON")
 echo "EUR_BANK_ID=$EUR_BANK_ID" | tee -a "$PARTIES_OUT"
 
 # Get PACKAGE_ID using ALICE_ID
@@ -98,7 +98,7 @@ fi
 
 
 # Build JSON payloads that don't require runtime values
-cat > "${JSON_DIR}/issue_eur.json" <<EOF
+cat > "issue_eur.json" <<EOF
 {
   "commands": {
     "commands": [
@@ -124,7 +124,7 @@ cat > "${JSON_DIR}/issue_eur.json" <<EOF
 }
 EOF
 
-cat > "${JSON_DIR}/issue_usd.json" <<EOF
+cat > "issue_usd.json" <<EOF
 {
   "commands": {
     "commands": [
@@ -154,7 +154,7 @@ EOF
 echo "==> Submitting issue_eur.json..."
 RESP_EUR=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
   -H "Content-Type: application/json" \
-  -d @"${JSON_DIR}/issue_eur.json")
+  -d @"issue_eur.json")
 
 # Lưu response để debug
 printf '%s\n' "$RESP_EUR" | jq . > "${JSON_DIR}/issue_eur.resp.json"
@@ -200,7 +200,7 @@ echo "ALICE_TRANSFER_CID=$ALICE_TRANSFER_CID" | tee -a "$PARTIES_OUT"
 echo "==> Submitting issue_usd.json..."
 RESP_USD=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
   -H "Content-Type: application/json" \
-  -d @"${JSON_DIR}/issue_usd.json")
+  -d @"issue_usd.json")
 
 # Lưu response để debug
 printf '%s\n' "$RESP_USD" | jq . > "${JSON_DIR}/issue_usd.resp.json"
@@ -239,7 +239,7 @@ fi
 echo "BOB_TRANSFER_CID=$BOB_TRANSFER_CID" | tee -a "$PARTIES_OUT"
 
 # Create alice_trf.json and bob_trf.json using extracted transfer CIDs
-cat > "${JSON_DIR}/alice_trf.json" <<EOF
+cat > "alice_trf.json" <<EOF
 {
   "commands": {
     "commands": [
@@ -259,7 +259,7 @@ cat > "${JSON_DIR}/alice_trf.json" <<EOF
 }
 EOF
 
-cat > "${JSON_DIR}/bob_trf.json" <<EOF
+cat > "bob_trf.json" <<EOF
 {
   "commands": {
     "commands": [
@@ -284,7 +284,7 @@ EOF
 echo "==> Alice accepts EUR transfer..."
 RESP_ALICE_ACCEPT=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
   -H "Content-Type: application/json" \
-  -d @"${JSON_DIR}/alice_trf.json")
+  -d @"alice_trf.json")
 printf '%s\n' "$RESP_ALICE_ACCEPT" | jq . > "${JSON_DIR}/alice_accept.resp.json"
 
 ALICE_ACCEPT_EUR=$(
@@ -321,7 +321,7 @@ echo "ALICE_ACCEPT_EUR=$ALICE_ACCEPT_EUR" | tee -a "$PARTIES_OUT"
 echo "==> Bob accepts USD transfer..."
 RESP_BOB_ACCEPT=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
   -H "Content-Type: application/json" \
-  -d @"${JSON_DIR}/bob_trf.json")
+  -d @"bob_trf.json")
 printf '%s\n' "$RESP_BOB_ACCEPT" | jq . > "${JSON_DIR}/bob_accept.resp.json"
 
 BOB_ACCEPT_USD=$(
@@ -360,7 +360,7 @@ echo "LATEST_OFFSET=$LATEST_OFFSET" | tee -a "$PARTIES_OUT"
 
 
 # Build acs.json using LATEST_OFFSET
-cat > "${JSON_DIR}/acs.json" <<EOF
+cat > "acs.json" <<EOF
 {
   "filter": {
     "filtersByParty": {
@@ -401,7 +401,7 @@ EOF
 
 echo "==> Querying ACS (active contracts) at offset ${LATEST_OFFSET}..."
 curl -s -X POST "${SANDBOX_HOST}/v2/state/active-contracts" \
-  -H "Content-Type: application/json" -d @"${JSON_DIR}/acs.json" | jq . > "${JSON_DIR}/acs.resp.json"
+  -H "Content-Type: application/json" -d @"acs.json" | jq . > "${JSON_DIR}/acs.resp.json"
 
 # Robust extraction: search anywhere for contract.contractId whose signatories contain EUR_BANK_ID or ALICE_ID
 # Robust extraction for array-of-entries shape
@@ -447,7 +447,7 @@ fi
 echo "NEW_IOU=$NEW_IOU" | tee -a "$PARTIES_OUT"
 
 # add_observer.json (Alice adds Bob as observer on her EUR IOU)
-cat > "${JSON_DIR}/add_observer.json" <<EOF
+cat > "add_observer.json" <<EOF
 {
   "commands": {
     "commands": [
@@ -469,7 +469,7 @@ EOF
 
 echo "==> Submitting add_observer..."
 RESP_ADD_OBS=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
-  -H "Content-Type: application/json" -d @"${JSON_DIR}/add_observer.json")
+  -H "Content-Type: application/json" -d @"add_observer.json")
 echo "$RESP_ADD_OBS" | jq . > "${JSON_DIR}/add_observer.resp.json"
 # Thử nhiều đường dẫn: .result.transaction hoặc .transaction; hỗ trợ CreatedEvent (PascalCase) và created (camelCase)
 NEW_IOU_FROM_ADD=$(
@@ -505,7 +505,7 @@ fi
 echo "NEW_IOU=$NEW_IOU_FROM_ADD" | tee -a "$PARTIES_OUT"
 
 # propose_trade.json (Alice proposes trade)
-cat > "${JSON_DIR}/propose_trade.json" <<EOF
+cat > "propose_trade.json" <<EOF
 {
   "commands": {
     "commands": [
@@ -535,7 +535,7 @@ EOF
 
 echo "==> Submitting trade proposal..."
 RESP_PROPOSE=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
-  -H "Content-Type: application/json" -d @"${JSON_DIR}/propose_trade.json")
+  -H "Content-Type: application/json" -d @"propose_trade.json")
 echo "$RESP_PROPOSE" | jq . > "${JSON_DIR}/propose_trade.resp.json"
 # Thử nhiều đường dẫn: .result.transaction hoặc .transaction; CreatedEvent (PascalCase) hoặc created (camelCase)
 TRADE_PROPOSAL_CID=$(
@@ -576,7 +576,7 @@ fi
 echo "TRADE_PROPOSAL_CID=$TRADE_PROPOSAL_CID" | tee -a "$PARTIES_OUT"
 
 # accept_trade.json (Bob accepts proposal)
-cat > "${JSON_DIR}/accept_trade.json" <<EOF
+cat > "accept_trade.json" <<EOF
 {
   "commands": {
     "commands": [
@@ -596,21 +596,5 @@ cat > "${JSON_DIR}/accept_trade.json" <<EOF
 }
 EOF
 
-echo "==> Bob accepting trade (this will perform the atomic swap)..."
-RESP_ACCEPT_TRADE=$(curl -s -X POST "${SANDBOX_HOST}/v2/commands/submit-and-wait-for-transaction" \
-  -H "Content-Type: application/json" -d @"${JSON_DIR}/accept_trade.json")
-echo "$RESP_ACCEPT_TRADE" | jq . > "${JSON_DIR}/accept_trade.resp.json"
-
-echo "==> Trade response saved to ${JSON_DIR}/accept_trade.resp.json"
-echo "==> Các giá trị chính đã được lưu vào ${PARTIES_OUT}:"
-cat "$PARTIES_OUT"
-
-# Nếu script tự start sandbox thì trap sẽ tắt nó khi kết thúc
-if [ -n "${SANDBOX_PID:-}" ]; then
-  echo "==> Kết thúc: sandbox sẽ được tắt nhờ trap khi script exit."
-else
-  echo "==> Lưu ý: sandbox không do script khởi động, không tắt tự động."
-fi
-
-# Kết thúc thành công
-echo "==> Hoàn tất kịch bản tự động hóa các bước của hướng dẫn."
+curl -X POST "http://localhost:7575/v2/commands/submit-and-wait-for-transaction" -H "Content-Type: application/json" -d @"accept_trade.json" | jq .
+printf "\n"

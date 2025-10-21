@@ -81,8 +81,10 @@ Quest 6 yêu cầu chạy `daml sandbox` trong một terminal và script `quest6
 2. Terminal 1: chạy sandbox
 
 ```sh
-daml sandbox --json-api-port 7575
+./quest6_setup.sh
 ```
+
+Lưu ý: sau khi khởi chạy sandbox, hãy chờ một chút (đến khi: "Canton sandbox is ready")
 
 3. Terminal 2: chạy script
 
