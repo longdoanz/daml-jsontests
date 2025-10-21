@@ -70,7 +70,6 @@ template PersonDataProposal
       controller proposal.owner
       do create proposal
 
--- Script test
 test_person_data = script do
   issuer <- allocateParty "IssuerParty"
   owner  <- allocateParty "OwnerParty"
