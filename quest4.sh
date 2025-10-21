@@ -25,24 +25,25 @@ template Token
   where
     signatory owner
 
--- Test 1: tạo token cho Alice
 token_test_1 = script do
   alice <- allocateParty "Alice"
   submit alice do
     createCmd Token with owner = alice
 
--- Test 2: kiểm tra authorization
 token_test_2 = script do
   alice <- allocateParty "Alice"
   bob   <- allocateParty "Bob"
 
-  submitMustFail alice do createCmd Token with owner = bob
-  submitMustFail bob   do createCmd Token with owner = alice
+  submitMustFail alice do
+    createCmd Token with owner = bob
+  submitMustFail bob   do
+    createCmd Token with owner = alice
 
-  submit alice do createCmd Token with owner = alice
-  submit bob   do createCmd Token with owner = bob
+  submit alice do
+    createCmd Token with owner = alice
+  submit bob   do
+    createCmd Token with owner = bob
 
--- Test 3: archive contract
 token_archive_exercise = script do
   alice <- allocateParty "Alice"
   alice_token_cid <- submit alice do
