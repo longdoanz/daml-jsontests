@@ -85,11 +85,13 @@ Quest 6 yêu cầu chạy `daml sandbox` trong một terminal và script `quest6
 ```
 
 Lưu ý: sau khi khởi chạy sandbox, hãy chờ một chút (đến khi: "Canton sandbox is ready")
+3. Mở project `capstone`
 
-3. Terminal 2: chạy script
+4. Terminal 2: chạy script
 
 ```sh
-./quest6.sh
+../quest6_start.sh
+../quest6.sh
 ```
 
 Lưu ý: khi sandbox đang chạy, script mới có thể upload DAR, allocate parties, issue IOU, thực hiện trade… và in ra kết quả cuối cùng. Nếu bạn chạy `./quest6.sh` khi sandbox chưa khởi động, script sẽ không thể kết nối tới JSON API và sẽ thất bại.

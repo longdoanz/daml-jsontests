@@ -14,10 +14,10 @@ curl -sSL https://get.daml.com/ | sh -s "${SDK_VERSION}"
 
 ~/.daml/bin/daml new $PROJECT_DIR --template quickstart-java
 
-# # Vào thư mục dự án
-cd "$PROJECT_DIR"
+# # # Vào thư mục dự án
+# cd "$PROJECT_DIR"
 
 # # Build DAR
-echo "==> Building DAR..."
-~/.daml/bin/daml build
-~/.daml/bin/daml sandbox --json-api-port 7575
+# echo "==> Building DAR..."
+# ~/.daml/bin/daml build
+# ~/.daml/bin/daml sandbox --json-api-port 7575
