@@ -12,12 +12,12 @@ SANDBOX_HOST="http://localhost:${SANDBOX_PORT}"
 echo "==> Installing Daml SDK ${SDK_VERSION}..."
 curl -sSL https://get.daml.com/ | sh -s "${SDK_VERSION}"
 
-daml new $PROJECT_DIR --template quickstart-java
+~/.daml/bin/daml new $PROJECT_DIR --template quickstart-java
 
 # # Vào thư mục dự án
 cd "$PROJECT_DIR"
 
 # # Build DAR
 echo "==> Building DAR..."
-daml build
-daml sandbox --json-api-port 7575
+~/.daml/bin/daml build
+~/.daml/bin/daml sandbox --json-api-port 7575
