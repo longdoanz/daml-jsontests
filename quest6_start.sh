@@ -1,4 +1,5 @@
 # # Build DAR
+cd capstone
 echo "==> Building DAR..."
 ~/.daml/bin/daml build
 
